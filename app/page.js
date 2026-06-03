@@ -144,7 +144,7 @@ function Nav({ onNavigate }) {
 
 /* --------------------------------- hero ---------------------------------- */
 
-function Hero({ onNavigate }) {
+function Hero({ onNavigate, started }) {
   return (
     <section id="top" className="relative min-h-[100svh] w-full">
       <div
@@ -174,10 +174,14 @@ function Hero({ onNavigate }) {
           className="font-display font-extrabold uppercase leading-[0.82] tracking-[-0.035em] text-[#ede8e0]"
           style={{ fontSize: 'clamp(3.1rem, 11.5vw, 11rem)' }}
         >
-          <MaskLine mount delay={0.45}>Forged,</MaskLine>
-          <MaskLine mount delay={0.56} className="font-serif-it lowercase font-normal tracking-[-0.01em] text-[#ff8a4c]">
-            not&nbsp;assembled.
-          </MaskLine>
+          {started && (
+            <>
+              <MaskLine mount delay={0.15}>Forged,</MaskLine>
+              <MaskLine mount delay={0.27} className="font-serif-it lowercase font-normal tracking-[-0.01em] text-[#ff8a4c]">
+                not&nbsp;assembled.
+              </MaskLine>
+            </>
+          )}
         </h1>
 
         <div className="mt-7 md:mt-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
@@ -632,12 +636,28 @@ function Footer({ onNavigate }) {
     <footer className="relative w-full border-t border-[#ede8e0]/12 px-5 md:px-8 py-12">
       <div className="max-w-[1500px] mx-auto">
         <div className="overflow-hidden">
-          <h3
-            className="font-display font-extrabold uppercase leading-[0.8] tracking-[-0.04em] text-[#ede8e0]/90"
-            style={{ fontSize: 'clamp(2.6rem, 13vw, 13rem)' }}
+          <motion.svg
+            viewBox="0 0 1200 160"
+            className="block w-full"
+            initial={{ y: '14%', opacity: 0 }}
+            whileInView={{ y: '0%', opacity: 1 }}
+            viewport={{ once: true, amount: 0.4 }}
+            transition={{ duration: 1.1, ease: EASE }}
+            role="img"
+            aria-label="ApexSoftworks"
           >
-            APEXSOFTWORKS
-          </h3>
+            <text
+              x="0"
+              y="130"
+              textLength="1200"
+              lengthAdjust="spacingAndGlyphs"
+              fill="#ede8e0"
+              fillOpacity="0.9"
+              style={{ fontFamily: 'Archivo, sans-serif', fontWeight: 800, fontSize: '150px', letterSpacing: '-3px' }}
+            >
+              APEXSOFTWORKS
+            </text>
+          </motion.svg>
         </div>
         <div className="mt-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6 font-mono2 text-[11px] tracking-[0.16em] text-[#ede8e0]/45">
           <div className="flex flex-wrap gap-x-7 gap-y-2">
@@ -654,6 +674,106 @@ function Footer({ onNavigate }) {
   )
 }
 
+/* ------------------------------ preloader -------------------------------- */
+
+function Preloader({ onReveal, onComplete }) {
+  const reduced = useReducedMotion()
+  const [pct, setPct] = useState(0)
+  const [exiting, setExiting] = useState(false)
+
+  useEffect(() => {
+    if (reduced) {
+      onReveal && onReveal()
+      onComplete && onComplete()
+      return
+    }
+    let raf
+    const start = performance.now()
+    const dur = 2600
+    const loop = (now) => {
+      const t = Math.min(1, (now - start) / dur)
+      const e = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      setPct(Math.round(e * 100))
+      if (t < 1) raf = requestAnimationFrame(loop)
+      else
+        setTimeout(() => {
+          setExiting(true)
+          onReveal && onReveal()
+        }, 380)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reduced])
+
+  if (reduced) return null
+
+  const phases = ['IGNITING THE FORGE', 'SMELTING THE ORE', 'ALIGNING THE STRATA', 'FORGING FORM', 'FORGED']
+  const phase = phases[Math.min(phases.length - 1, Math.floor(pct / 22))]
+
+  return (
+    <motion.div
+      className="fixed inset-0 z-[100] flex flex-col items-center justify-center overflow-hidden bg-[#08080a]"
+      initial={{ y: '0%' }}
+      animate={exiting ? { y: '-100%' } : { y: '0%' }}
+      transition={{ duration: 1.15, ease: [0.76, 0, 0.24, 1] }}
+      onAnimationComplete={() => {
+        if (exiting) onComplete && onComplete()
+      }}
+    >
+      {/* pulsing ember */}
+      <motion.div
+        aria-hidden
+        className="pointer-events-none absolute inset-0"
+        animate={{ opacity: [0.25, 0.5, 0.25] }}
+        transition={{ duration: 3.2, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ background: 'radial-gradient(50% 50% at 50% 48%, rgba(255,106,44,0.16), transparent 70%)' }}
+      />
+
+      <motion.div
+        className="relative flex flex-col items-center gap-7 px-6 text-center"
+        animate={exiting ? { opacity: 0, filter: 'blur(8px)', y: -16 } : { opacity: 1, filter: 'blur(0px)', y: 0 }}
+        transition={{ duration: 0.5, ease: EASE }}
+      >
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 5.5, repeat: Infinity, ease: 'linear' }}
+          className="text-2xl leading-none text-[#ff6a2c]"
+        >
+          ✦
+        </motion.div>
+
+        <div className="font-mono2 text-[10px] md:text-[11px] tracking-[0.4em] text-[#ede8e0]/55">
+          APEXSOFTWORKS — SOFTWARE STUDIO
+        </div>
+
+        <div
+          className="font-display font-extrabold leading-none tabular-nums text-[#ede8e0]"
+          style={{ fontSize: 'clamp(4.5rem, 18vw, 13rem)', letterSpacing: '-0.04em' }}
+        >
+          {String(pct).padStart(3, '0')}
+        </div>
+
+        <div className="w-[min(440px,82vw)]">
+          <div className="relative h-px w-full overflow-hidden bg-[#ede8e0]/15">
+            <div
+              className="absolute inset-y-0 left-0 bg-gradient-to-r from-[#ff6a2c] to-[#ffb36b]"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="mt-3 flex items-center justify-between font-mono2 text-[10px] tracking-[0.2em] text-[#ede8e0]/45">
+            <span>{phase}</span>
+            <span className="tabular-nums">{pct}%</span>
+          </div>
+        </div>
+      </motion.div>
+
+      {/* horizon line that becomes the reveal edge */}
+      <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#ff6a2c] to-transparent" />
+    </motion.div>
+  )
+}
+
 /* --------------------------------- app ----------------------------------- */
 
 export default function App() {
@@ -661,6 +781,8 @@ export default function App() {
   const progressRef = useRef(0)
   const lenisRef = useRef(null)
   const velRef = useRef(0)
+  const [loading, setLoading] = useState(true)
+  const [started, setStarted] = useState(false)
   const { scrollYProgress } = useScroll()
   const railScaleX = useTransform(scrollYProgress, [0, 1], [0, 1])
   const canvasOpacity = useTransform(scrollYProgress, [0.72, 0.9], [1, 0.16])
@@ -672,8 +794,17 @@ export default function App() {
     return unsub
   }, [scrollYProgress])
 
+  // lock scroll while the loader is up
   useEffect(() => {
-    if (reduced) return
+    if (typeof document === 'undefined') return
+    document.body.style.overflow = loading ? 'hidden' : ''
+    return () => {
+      document.body.style.overflow = ''
+    }
+  }, [loading])
+
+  useEffect(() => {
+    if (reduced || loading) return
     let lenis
     let raf
     let mounted = true
@@ -712,6 +843,10 @@ export default function App() {
 
   return (
     <main className="relative w-full bg-[#08080a] text-[#ede8e0]">
+      {loading && (
+        <Preloader onReveal={() => setStarted(true)} onComplete={() => setLoading(false)} />
+      )}
+
       {/* fixed 3D world */}
       {!reduced ? (
         <motion.div className="fixed inset-0 z-0 pointer-events-none" style={{ opacity: canvasOpacity }}>
@@ -746,7 +881,7 @@ export default function App() {
 
       {/* content */}
       <div className="relative z-10">
-        <Hero onNavigate={onNavigate} />
+        <Hero onNavigate={onNavigate} started={started} />
 
         <Chapter
           id="craft"
