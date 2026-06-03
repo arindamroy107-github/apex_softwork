@@ -9,6 +9,8 @@ import {
   useTransform,
   useReducedMotion,
   useMotionValueEvent,
+  useInView,
+  useAnimationFrame,
 } from 'framer-motion'
 import { ArrowUpRight, ArrowRight, Check, Plus } from 'lucide-react'
 
@@ -155,8 +157,8 @@ function Hero({ onNavigate }) {
           <p className="mt-1 text-[#ede8e0]/35">EST. MMXIV</p>
         </Reveal>
         <Reveal delay={0.6} className="text-right">
-          <p>SALT LAKE CITY</p>
-          <p className="mt-1 text-[#ede8e0]/35">UTAH, USA</p>
+          <p>UTAH</p>
+          <p className="mt-1 text-[#ede8e0]/35">USA</p>
         </Reveal>
       </div>
 
@@ -210,14 +212,181 @@ function Hero({ onNavigate }) {
   )
 }
 
+/* ------------------------ kinetic / next-gen helpers --------------------- */
+
+function Words({ text, className = '', delay = 0, stagger = 0.05 }) {
+  const reduced = useReducedMotion()
+  if (reduced) return <span className={className}>{text}</span>
+  const words = String(text).split(' ')
+  const container = {
+    hidden: {},
+    show: { transition: { staggerChildren: stagger, delayChildren: delay } },
+  }
+  const child = {
+    hidden: { y: '110%', opacity: 0, filter: 'blur(10px)' },
+    show: { y: '0%', opacity: 1, filter: 'blur(0px)', transition: { duration: 0.95, ease: EASE } },
+  }
+  return (
+    <motion.span
+      className={className}
+      variants={container}
+      initial="hidden"
+      whileInView="show"
+      viewport={{ once: true, amount: 0.2 }}
+    >
+      {words.map((w, i) => (
+        <span key={i} className="inline-block overflow-hidden" style={{ verticalAlign: 'bottom' }}>
+          <motion.span className="inline-block will-change-transform" variants={child}>
+            {w}&nbsp;
+          </motion.span>
+        </span>
+      ))}
+    </motion.span>
+  )
+}
+
+function Marquee({ items, baseSpeed = 55, dir = 1, velocityRef, className = '', style }) {
+  const reduced = useReducedMotion()
+  const ref = useRef(null)
+  const x = useRef(0)
+  useAnimationFrame((t, delta) => {
+    if (reduced || !ref.current) return
+    const dt = Math.min(delta, 50) / 1000
+    const v = velocityRef ? velocityRef.current || 0 : 0
+    x.current -= dir * (baseSpeed + Math.abs(v) * 0.6) * dt
+    const half = ref.current.scrollWidth / 2
+    if (half > 0) {
+      if (x.current <= -half) x.current += half
+      if (x.current > 0) x.current -= half
+    }
+    ref.current.style.transform = `translate3d(${x.current}px,0,0)`
+  })
+  const block = (key) => (
+    <span key={key} className="inline-flex items-center">
+      {items.map((it, i) => (
+        <span key={i} className="inline-flex items-center">
+          <span>{it}</span>
+          <span className="mx-6 md:mx-10 text-[#ff6a2c]">✦</span>
+        </span>
+      ))}
+    </span>
+  )
+  return (
+    <div className={'flex w-max whitespace-nowrap ' + className} ref={ref} style={style}>
+      {block('a')}
+      {block('b')}
+    </div>
+  )
+}
+
+function CountStat({ value, label }) {
+  const reduced = useReducedMotion()
+  const ref = useRef(null)
+  const inView = useInView(ref, { once: true, margin: '-12%' })
+  const num = parseInt(String(value), 10)
+  const hasNum = !Number.isNaN(num)
+  const suffix = String(value).replace(/[0-9]/g, '')
+  const pad = String(value).startsWith('0')
+  const [disp, setDisp] = useState(hasNum && !reduced ? '0' : value)
+  useEffect(() => {
+    if (!hasNum || reduced) {
+      setDisp(value)
+      return
+    }
+    if (!inView) return
+    let raf
+    const start = performance.now()
+    const dur = 1500
+    const loop = (now) => {
+      const p = Math.min(1, (now - start) / dur)
+      const e = 1 - Math.pow(1 - p, 3)
+      const cur = Math.round(num * e)
+      let s = String(cur)
+      if (pad && cur < 10) s = '0' + s
+      setDisp(s + suffix)
+      if (p < 1) raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => cancelAnimationFrame(raf)
+  }, [inView, hasNum, reduced, num, suffix, pad, value])
+  return (
+    <div ref={ref}>
+      <div className="font-display font-extrabold tracking-[-0.03em] text-[#ede8e0]" style={{ fontSize: 'clamp(2.6rem, 6vw, 5rem)' }}>
+        {disp}
+      </div>
+      <div className="mt-2 font-mono2 text-[10px] md:text-[11px] tracking-[0.2em] text-[#ede8e0]/45">{label}</div>
+    </div>
+  )
+}
+
+function Cursor() {
+  const reduced = useReducedMotion()
+  const ringRef = useRef(null)
+  const dotRef = useRef(null)
+  const [enabled, setEnabled] = useState(false)
+  const [hover, setHover] = useState(false)
+  useEffect(() => {
+    if (reduced || typeof window === 'undefined') return
+    if (window.matchMedia('(pointer: coarse)').matches) return
+    setEnabled(true)
+    const state = { x: -100, y: -100, tx: -100, ty: -100 }
+    const move = (e) => {
+      state.tx = e.clientX
+      state.ty = e.clientY
+      const t = e.target && e.target.closest ? e.target.closest('a,button,[data-cursor],input,textarea') : null
+      setHover(!!t)
+    }
+    window.addEventListener('pointermove', move)
+    document.documentElement.style.cursor = 'none'
+    let raf
+    const loop = () => {
+      state.x += (state.tx - state.x) * 0.2
+      state.y += (state.ty - state.y) * 0.2
+      if (ringRef.current) ringRef.current.style.transform = `translate(${state.x}px, ${state.y}px) translate(-50%, -50%)`
+      if (dotRef.current) dotRef.current.style.transform = `translate(${state.tx}px, ${state.ty}px) translate(-50%, -50%)`
+      raf = requestAnimationFrame(loop)
+    }
+    raf = requestAnimationFrame(loop)
+    return () => {
+      window.removeEventListener('pointermove', move)
+      cancelAnimationFrame(raf)
+      document.documentElement.style.cursor = ''
+    }
+  }, [reduced])
+  if (!enabled) return null
+  return (
+    <>
+      <div
+        ref={ringRef}
+        className="pointer-events-none fixed left-0 top-0 z-[90] rounded-full border border-[#ede8e0] mix-blend-difference"
+        style={{ width: hover ? 64 : 26, height: hover ? 64 : 26, transition: 'width 0.32s cubic-bezier(0.16,1,0.3,1), height 0.32s cubic-bezier(0.16,1,0.3,1)' }}
+      />
+      <div ref={dotRef} className="pointer-events-none fixed left-0 top-0 z-[90] h-1.5 w-1.5 rounded-full bg-[#ff6a2c]" />
+    </>
+  )
+}
+
 /* ------------------------------- chapters -------------------------------- */
 
 function Chapter({ id, index, label, statement, accent, body, deliverables, align = 'left' }) {
   const right = align === 'right'
+  const reduced = useReducedMotion()
+  const sectionRef = useRef(null)
+  const { scrollYProgress: sp } = useScroll({ target: sectionRef, offset: ['start end', 'end start'] })
+  const ghostY = useTransform(sp, [0, 1], reduced ? ['0%', '0%'] : ['26%', '-26%'])
+  const headY = useTransform(sp, [0, 1], reduced ? [0, 0] : [48, -48])
   return (
-    <section id={id} className="relative min-h-[100svh] w-full flex items-center">
-      <div className={'w-full max-w-[1500px] mx-auto px-5 md:px-8 flex ' + (right ? 'justify-end text-right' : 'justify-start')}>
-        <div className="w-full md:max-w-[44rem]">
+    <section ref={sectionRef} id={id} className="relative min-h-[100svh] w-full flex items-center overflow-hidden">
+      <motion.span
+        aria-hidden
+        style={{ y: ghostY }}
+        className={'pointer-events-none absolute top-1/2 -translate-y-1/2 font-display font-extrabold leading-none text-[#ede8e0]/[0.04] select-none ' + (right ? 'left-[-3vw]' : 'right-[-3vw]')}
+      >
+        <span style={{ fontSize: 'clamp(15rem, 42vw, 46rem)' }}>{index}</span>
+      </motion.span>
+
+      <div className={'relative w-full max-w-[1500px] mx-auto px-5 md:px-8 flex ' + (right ? 'justify-end text-right' : 'justify-start')}>
+        <motion.div style={{ y: headY }} className="w-full md:max-w-[44rem]">
           <Reveal>
             <div className={'flex items-baseline gap-4 ' + (right ? 'justify-end' : '')}>
               <span className="font-mono2 text-[12px] tracking-[0.2em] text-[#ff6a2c]">{index}</span>
@@ -226,13 +395,11 @@ function Chapter({ id, index, label, statement, accent, body, deliverables, alig
           </Reveal>
 
           <h2
-            className="mt-5 md:mt-7 font-display font-semibold leading-[0.95] tracking-[-0.03em] text-[#ede8e0]"
+            className="mt-5 md:mt-7 font-display font-semibold leading-[0.98] tracking-[-0.03em] text-[#ede8e0]"
             style={{ fontSize: 'clamp(2.2rem, 6vw, 5.2rem)' }}
           >
-            <MaskLine>{statement}</MaskLine>
-            <MaskLine delay={0.08} className="font-serif-it font-normal lowercase text-[#ff8a4c]">
-              {accent}
-            </MaskLine>
+            <Words text={statement} className="block" />
+            <Words text={accent} className="block font-serif-it font-normal lowercase text-[#ff8a4c]" delay={0.12} />
           </h2>
 
           <Reveal delay={0.15} className={'mt-7 max-w-[34rem] ' + (right ? 'ml-auto' : '')}>
@@ -244,14 +411,14 @@ function Chapter({ id, index, label, statement, accent, body, deliverables, alig
               {deliverables.map((d) => (
                 <span
                   key={d}
-                  className="rounded-full border border-[#ede8e0]/18 px-4 py-1.5 font-mono2 text-[11px] tracking-[0.14em] text-[#ede8e0]/75"
+                  className="rounded-full border border-[#ede8e0]/18 px-4 py-1.5 font-mono2 text-[11px] tracking-[0.14em] text-[#ede8e0]/75 transition-colors hover:border-[#ff6a2c] hover:text-[#ede8e0]"
                 >
                   {d}
                 </span>
               ))}
             </div>
           </Reveal>
-        </div>
+        </motion.div>
       </div>
     </section>
   )
@@ -305,13 +472,10 @@ function Metrics() {
         <div className="mt-16 md:mt-24">
           <Hairline />
           <div className="grid grid-cols-2 md:grid-cols-4">
-            {stats.map(([n, l], i) => (
-              <Reveal key={l} delay={i * 0.08} className="border-b border-r border-[#ede8e0]/12 last:border-r-0 md:[&:nth-child(4)]:border-r-0 px-1 py-9 md:py-12">
-                <div className="font-display font-extrabold tracking-[-0.03em] text-[#ede8e0]" style={{ fontSize: 'clamp(2.6rem, 6vw, 5rem)' }}>
-                  {n}
-                </div>
-                <div className="mt-2 font-mono2 text-[10px] md:text-[11px] tracking-[0.2em] text-[#ede8e0]/45">{l}</div>
-              </Reveal>
+            {stats.map(([n, l]) => (
+              <div key={l} className="border-b border-r border-[#ede8e0]/12 last:border-r-0 md:[&:nth-child(4)]:border-r-0 px-1 py-9 md:py-12">
+                <CountStat value={n} label={l} />
+              </div>
             ))}
           </div>
         </div>
@@ -368,9 +532,8 @@ function Connect() {
             </MaskLine>
           </h2>
           <Reveal delay={0.2} className="mt-10 space-y-3 font-mono2 text-[12px] tracking-[0.14em] text-[#ede8e0]/55">
-            <p>STUDIO@APEXSOFTWORKS.DEV</p>
-            <p>+1 (000) 000-0000</p>
-            <p>SALT LAKE CITY · UTAH</p>
+            <p>STUDIO@APEXSOFTWORX.COM</p>
+            <p>UTAH</p>
           </Reveal>
         </div>
 
@@ -497,6 +660,7 @@ export default function App() {
   const reduced = useReducedMotion()
   const progressRef = useRef(0)
   const lenisRef = useRef(null)
+  const velRef = useRef(0)
   const { scrollYProgress } = useScroll()
   const railScaleX = useTransform(scrollYProgress, [0, 1], [0, 1])
   const canvasOpacity = useTransform(scrollYProgress, [0.72, 0.9], [1, 0.16])
@@ -518,9 +682,13 @@ export default function App() {
       if (!mounted) return
       lenis = new Lenis({ duration: 1.15, smoothWheel: true, touchMultiplier: 1.6 })
       lenisRef.current = lenis
+      lenis.on('scroll', ({ velocity }) => {
+        velRef.current = velocity || 0
+      })
       if (typeof window !== 'undefined') window.__lenis = lenis
       const loop = (t) => {
         lenis.raf(t)
+        velRef.current *= 0.9
         raf = requestAnimationFrame(loop)
       }
       raf = requestAnimationFrame(loop)
@@ -547,7 +715,7 @@ export default function App() {
       {/* fixed 3D world */}
       {!reduced ? (
         <motion.div className="fixed inset-0 z-0 pointer-events-none" style={{ opacity: canvasOpacity }}>
-          <Scene progressRef={progressRef} />
+          <Scene progressRef={progressRef} velocityRef={velRef} />
         </motion.div>
       ) : (
         <div
@@ -574,6 +742,7 @@ export default function App() {
 
       <Nav onNavigate={onNavigate} />
       {!reduced && <ScrollHUD progress={scrollYProgress} />}
+      <Cursor />
 
       {/* content */}
       <div className="relative z-10">
@@ -612,9 +781,30 @@ export default function App() {
           align="left"
         />
 
+        <section className="relative w-full overflow-hidden border-y border-[#ede8e0]/10 py-14 md:py-20">
+          <Marquee
+            velocityRef={velRef}
+            items={['CUSTOM SOFTWARE', 'WEB PLATFORMS', 'AI SYSTEMS', 'DESIGN SYSTEMS', 'AUTOMATION', 'DATA PIPELINES']}
+            className="font-display font-extrabold uppercase tracking-[-0.02em]"
+            style={{ fontSize: 'clamp(2rem, 7vw, 5.6rem)', color: 'transparent', WebkitTextStroke: '1px rgba(237,232,224,0.5)' }}
+          />
+        </section>
+
         <ApexMoment />
         <Metrics />
         <Connect />
+
+        <section className="relative w-full overflow-hidden py-10 md:py-16">
+          <Marquee
+            velocityRef={velRef}
+            dir={-1}
+            baseSpeed={70}
+            items={['AVAILABLE FOR NEW WORK', 'LET US FORGE SOMETHING INEVITABLE', 'BEGIN THE ASCENT']}
+            className="font-serif-it text-[#ede8e0]/85"
+            style={{ fontSize: 'clamp(1.6rem, 5vw, 3.6rem)' }}
+          />
+        </section>
+
         <Footer onNavigate={onNavigate} />
       </div>
     </main>

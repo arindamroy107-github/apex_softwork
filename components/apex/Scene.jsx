@@ -19,7 +19,7 @@ function Rig({ pointerRef }) {
   return null
 }
 
-export default function Scene({ progressRef }) {
+export default function Scene({ progressRef, velocityRef }) {
   const pointerRef = useRef({ x: 0, y: 0 })
   const [isMobile, setIsMobile] = useState(false)
 
