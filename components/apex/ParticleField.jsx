@@ -10,7 +10,7 @@ const easeInOut = (t) => (t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t)
 const gauss = (x, m, s) => Math.exp(-((x - m) * (x - m)) / (2 * s * s))
 
 // progress positions where each shape is fully formed (aligned to DOM section centers)
-const KEYS = [0, 0.15, 0.31, 0.47, 0.62, 0.74, 1.0]
+const KEYS = [0, 0.14, 0.28, 0.42, 0.56, 0.68, 0.84, 1.0]
 
 const vert = `
   uniform float uTime;
@@ -136,7 +136,7 @@ export default function ParticleField({ progressRef, count }) {
     u.uBlend.value = easeInOut(lt)
     u.uTime.value = t
     u.uOpacity.value += (1 - u.uOpacity.value) * Math.min(1, dt * 1.4)
-    const amber = clamp(Math.max(gauss(p, 0.15, 0.06), gauss(p, 0.62, 0.06)) * 0.95 + 0.06, 0, 1)
+    const amber = clamp(Math.max(gauss(p, 0.14, 0.05), gauss(p, 0.56, 0.07), gauss(p, 0.68, 0.06)) * 0.95 + 0.06, 0, 1)
     u.uAmber.value += (amber - u.uAmber.value) * 0.06
     const o = pts.current
     if (o) {

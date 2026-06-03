@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import dynamic from 'next/dynamic'
 import {
   motion,
@@ -13,13 +13,14 @@ import {
   useAnimationFrame,
 } from 'framer-motion'
 import { ArrowUpRight, ArrowRight, Check, Plus } from 'lucide-react'
+import { ForgeAudio } from '@/components/apex/audio'
 
 const Scene = dynamic(() => import('@/components/apex/Scene'), { ssr: false })
 
 const EASE = [0.16, 1, 0.3, 1]
 
-const CHAPTERS = ['THE ORE', 'THE MONOLITH', 'THE SYSTEM', 'THE INTELLIGENCE', 'APEX', 'CONVERGENCE']
-const KEYS = [0, 0.08, 0.23, 0.39, 0.55, 0.7, 1]
+const CHAPTERS = ['THE ORE', 'THE MONOLITH', 'THE SYSTEM', 'THE INTELLIGENCE', 'THE CANYON', 'APEX', 'CONVERGENCE']
+const KEYS = [0, 0.08, 0.22, 0.36, 0.5, 0.62, 0.78, 1]
 
 /* ----------------------------- motion helpers ----------------------------- */
 
@@ -80,6 +81,7 @@ function ScrollHUD({ progress }) {
     setPct(Math.round(v * 100))
     let s = 0
     while (s < KEYS.length - 1 && v >= KEYS[s + 1]) s++
+    if (s > CHAPTERS.length - 1) s = CHAPTERS.length - 1
     setChap((p) => (p === s ? p : s))
   })
   return (
@@ -100,11 +102,44 @@ function ScrollHUD({ progress }) {
 
 /* ------------------------------ navigation ------------------------------- */
 
-function Nav({ onNavigate }) {
+function AudioToggle({ on, onClick }) {
+  const bars = [0, 1, 2, 3]
+  return (
+    <button
+      onClick={onClick}
+      aria-label={on ? 'Mute ambient audio' : 'Play ambient audio'}
+      data-cursor
+      className="group relative grid h-9 w-9 place-items-center rounded-full border border-[#ede8e0]/20 transition-colors hover:border-[#ff6a2c]"
+    >
+      <span className="flex items-end gap-[2px] h-3.5">
+        {bars.map((i) => (
+          <motion.span
+            key={i}
+            className="w-[2px] rounded-full bg-[#ede8e0] group-hover:bg-[#ff6a2c]"
+            animate={
+              on
+                ? { height: ['35%', '100%', '55%', '90%', '40%'] }
+                : { height: '28%' }
+            }
+            transition={
+              on
+                ? { duration: 1.1 + i * 0.18, repeat: Infinity, ease: 'easeInOut', delay: i * 0.12 }
+                : { duration: 0.3 }
+            }
+            style={{ height: '28%' }}
+          />
+        ))}
+      </span>
+    </button>
+  )
+}
+
+function Nav({ onNavigate, audioOn, onToggleAudio }) {
   const links = [
     ['CRAFT', '#craft'],
     ['SYSTEMS', '#systems'],
     ['INTELLIGENCE', '#intelligence'],
+    ['WORK', '#work'],
     ['STUDIO', '#studio'],
   ]
   return (
@@ -116,7 +151,7 @@ function Nav({ onNavigate }) {
     >
       <button onClick={() => onNavigate('#top')} className="flex items-center gap-2 group">
         <span className="text-[#ff6a2c] text-lg leading-none transition-transform group-hover:rotate-90 duration-500">✦</span>
-        <span className="font-mono2 text-[12px] tracking-[0.28em] text-[#ede8e0]">APEXSOFTWORKS</span>
+        <span className="font-mono2 text-[12px] tracking-[0.28em] text-[#ede8e0]">APEXSOFTWORX</span>
       </button>
 
       <div className="hidden md:flex items-center gap-9 font-mono2 text-[11px] tracking-[0.18em] text-[#ede8e0]/65">
@@ -131,13 +166,16 @@ function Nav({ onNavigate }) {
         ))}
       </div>
 
-      <button
-        onClick={() => onNavigate('#connect')}
-        className="group flex items-center gap-2 rounded-full border border-[#ede8e0]/20 px-4 py-2 font-mono2 text-[11px] tracking-[0.18em] text-[#ede8e0] hover:bg-[#ede8e0] hover:text-[#08080a] transition-colors duration-300"
-      >
-        START A PROJECT
-        <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-      </button>
+      <div className="flex items-center gap-3">
+        <AudioToggle on={audioOn} onClick={onToggleAudio} />
+        <button
+          onClick={() => onNavigate('#connect')}
+          className="group hidden sm:flex items-center gap-2 rounded-full border border-[#ede8e0]/20 px-4 py-2 font-mono2 text-[11px] tracking-[0.18em] text-[#ede8e0] hover:bg-[#ede8e0] hover:text-[#08080a] transition-colors duration-300"
+        >
+          START A PROJECT
+          <ArrowUpRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+        </button>
+      </div>
     </motion.nav>
   )
 }
@@ -187,7 +225,7 @@ function Hero({ onNavigate, started }) {
         <div className="mt-7 md:mt-10 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
           <Reveal delay={0.2} className="max-w-[30rem]">
             <p className="text-[15px] md:text-[17px] leading-relaxed text-[#ede8e0]/70">
-              ApexSoftworks is a Utah software studio engineering custom platforms,
+              ApexSoftworx is a Utah software studio engineering custom platforms,
               products, and AI systems. We treat software as a craft, not a commodity —
               and this page is the proof.
             </p>
@@ -428,6 +466,183 @@ function Chapter({ id, index, label, statement, accent, body, deliverables, alig
   )
 }
 
+/* ----------------------------- selected work ----------------------------- */
+
+function ShatterCard({ img, index, title, category, year, summary }) {
+  const reduced = useReducedMotion()
+  const [hover, setHover] = useState(false)
+  const COLS = 8
+  const ROWS = 6
+  const tiles = useMemo(() => {
+    const arr = []
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        const cx = (c + 0.5) / COLS - 0.5
+        const cy = (r + 0.5) / ROWS - 0.5
+        const dist = Math.hypot(cx, cy)
+        arr.push({
+          c,
+          r,
+          tx: cx * 170 + (Math.random() - 0.5) * 70,
+          ty: cy * 170 + (Math.random() - 0.5) * 70,
+          rot: (Math.random() - 0.5) * 130,
+          delay: (0.55 - dist) * 0.16 + Math.random() * 0.05,
+          dur: 0.55 + Math.random() * 0.4,
+        })
+      }
+    }
+    return arr
+  }, [])
+
+  return (
+    <div
+      data-cursor
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="group relative overflow-hidden rounded-2xl border border-[#ede8e0]/12 bg-[#0c0c0f] transition-colors duration-500 hover:border-[#ff6a2c]/50"
+      style={{ aspectRatio: '4 / 5' }}
+    >
+      {/* detail layer (revealed beneath the shatter) */}
+      <div className="absolute inset-0 z-0 flex flex-col justify-between p-6 md:p-7">
+        <div className="flex items-start justify-between font-mono2 text-[10px] tracking-[0.2em] text-[#ede8e0]/50">
+          <span>{index}</span>
+          <span>{year}</span>
+        </div>
+        <div>
+          <span className="font-mono2 text-[10px] tracking-[0.2em] text-[#ff6a2c]">{category}</span>
+          <h3
+            className="mt-3 font-display font-bold leading-[0.95] tracking-[-0.02em] text-[#ede8e0]"
+            style={{ fontSize: 'clamp(1.6rem, 2.4vw, 2.3rem)' }}
+          >
+            {title}
+          </h3>
+          <p className="mt-3 max-w-[22rem] text-[13.5px] leading-relaxed text-[#ede8e0]/60">{summary}</p>
+          <span className="mt-5 inline-flex items-center gap-2 font-mono2 text-[11px] tracking-[0.18em] text-[#ede8e0]">
+            VIEW CASE
+            <ArrowUpRight className="h-3.5 w-3.5 text-[#ff6a2c]" />
+          </span>
+        </div>
+      </div>
+
+      {/* shatter tiles */}
+      <div className="absolute inset-0 z-10 flex flex-wrap">
+        {tiles.map((t, i) => (
+          <div
+            key={i}
+            style={{
+              width: `${100 / COLS}%`,
+              height: `${100 / ROWS}%`,
+              flexShrink: 0,
+              backgroundImage: `url(${img})`,
+              backgroundSize: `${COLS * 100}% ${ROWS * 100}%`,
+              backgroundPosition: `${(t.c / (COLS - 1)) * 100}% ${(t.r / (ROWS - 1)) * 100}%`,
+              transform:
+                hover && !reduced
+                  ? `translate3d(${t.tx}%, ${t.ty}%, 0) rotate(${t.rot}deg) scale(0.25)`
+                  : 'translate3d(0,0,0) rotate(0deg) scale(1)',
+              opacity: hover ? 0 : 1,
+              transition: reduced
+                ? 'opacity 0.4s ease'
+                : `transform ${t.dur}s cubic-bezier(0.16,1,0.3,1) ${t.delay}s, opacity ${t.dur}s ease ${t.delay}s`,
+              willChange: 'transform, opacity',
+            }}
+          />
+        ))}
+      </div>
+
+      {/* default label overlay */}
+      <div
+        className="pointer-events-none absolute inset-0 z-20 flex flex-col justify-end p-6 md:p-7 transition-opacity duration-500"
+        style={{
+          opacity: hover ? 0 : 1,
+          background:
+            'linear-gradient(to top, rgba(8,8,10,0.94) 3%, rgba(8,8,10,0.3) 36%, transparent 60%)',
+        }}
+      >
+        <div className="flex items-center gap-3 font-mono2 text-[10px] tracking-[0.2em] text-[#ede8e0]/55">
+          <span className="text-[#ff6a2c]">{index}</span>
+          <span className="h-px w-6 bg-[#ede8e0]/30" />
+          <span>{category}</span>
+        </div>
+        <h3
+          className="mt-2 font-display font-bold leading-[0.95] tracking-[-0.02em] text-[#ede8e0]"
+          style={{ fontSize: 'clamp(1.6rem, 2.4vw, 2.3rem)' }}
+        >
+          {title}
+        </h3>
+      </div>
+    </div>
+  )
+}
+
+function SelectedWork() {
+  const projects = [
+    {
+      index: '01',
+      img: 'https://images.pexels.com/photos/10653941/pexels-photo-10653941.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940',
+      title: 'Helix Ledger',
+      category: 'CUSTOM PLATFORM / FINTECH',
+      year: '2024',
+      summary:
+        'A real-time settlement core clearing nine-figure volume with sub-second finality and an audit trail you can trust.',
+    },
+    {
+      index: '02',
+      img: 'https://images.unsplash.com/photo-1645839057098-5ea8761a6b09?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NjZ8MHwxfHNlYXJjaHwzfHxBSSUyMG5ldXJhbCUyMG5ldHdvcmt8ZW58MHx8fGJsYWNrfDE3ODA0NTM4MzN8MA&ixlib=rb-4.1.0&q=85',
+      title: 'Aperture Mind',
+      category: 'AI SYSTEM / RETRIEVAL',
+      year: '2024',
+      summary:
+        'An autonomous research agent that reads, reasons, and cites across millions of documents — measured and safe.',
+    },
+    {
+      index: '03',
+      img: 'https://images.unsplash.com/photo-1709625862266-014ef072fd93?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMzl8MHwxfHNlYXJjaHwzfHxkYXJrJTIwYWJzdHJhY3QlMjB0ZWNobm9sb2d5fGVufDB8fHxibGFja3wxNzgwNDUzODI2fDA&ixlib=rb-4.1.0&q=85',
+      title: 'Monarch Commerce',
+      category: 'WEB / COMMERCE',
+      year: '2023',
+      summary:
+        'A headless storefront engineered for scale — flawless through a hundred thousand concurrent carts.',
+    },
+  ]
+  return (
+    <section id="work" className="relative w-full py-28 md:py-40">
+      <div className="max-w-[1500px] mx-auto px-5 md:px-8">
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+          <div>
+            <Reveal>
+              <span className="font-mono2 text-[11px] tracking-[0.26em] text-[#ff6a2c]">SELECTED WORK</span>
+            </Reveal>
+            <h2
+              className="mt-6 font-display font-extrabold uppercase leading-[0.85] tracking-[-0.035em] text-[#ede8e0]"
+              style={{ fontSize: 'clamp(2.4rem, 7vw, 6rem)' }}
+            >
+              <MaskLine>Proof,</MaskLine>
+              <MaskLine delay={0.08} className="font-serif-it lowercase font-normal text-[#ff8a4c]">
+                not promises.
+              </MaskLine>
+            </h2>
+          </div>
+          <Reveal delay={0.15} className="max-w-[24rem]">
+            <p className="text-[15px] leading-relaxed text-[#ede8e0]/60">
+              A few systems we have forged. Hover to take one apart — every pixel is
+              engineered to fall away and come back together.
+            </p>
+          </Reveal>
+        </div>
+
+        <div className="mt-14 md:mt-20 grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+          {projects.map((p) => (
+            <Reveal key={p.title} delay={0.05}>
+              <ShatterCard {...p} />
+            </Reveal>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 /* ------------------------------ apex moment ------------------------------ */
 
 function ApexMoment() {
@@ -536,8 +751,13 @@ function Connect() {
             </MaskLine>
           </h2>
           <Reveal delay={0.2} className="mt-10 space-y-3 font-mono2 text-[12px] tracking-[0.14em] text-[#ede8e0]/55">
-            <p>STUDIO@APEXSOFTWORX.COM</p>
-            <p>UTAH</p>
+            <a href="mailto:support@apexsoftworx.com" className="block w-max hover:text-[#ff6a2c] transition-colors">
+              SUPPORT@APEXSOFTWORX.COM
+            </a>
+            <a href="tel:+17023703712" className="block w-max hover:text-[#ff6a2c] transition-colors">
+              +1 (702) 370-3712
+            </a>
+            <p>OREM · UTAH</p>
           </Reveal>
         </div>
 
@@ -637,7 +857,7 @@ function Footer({ onNavigate }) {
       <div className="max-w-[1500px] mx-auto">
         <div className="overflow-hidden">
           <motion.svg
-            viewBox="0 0 1200 160"
+            viewBox="0 0 1224 160"
             className="block w-full"
             initial={{ y: '14%', opacity: 0 }}
             whileInView={{ y: '0%', opacity: 1 }}
@@ -655,7 +875,7 @@ function Footer({ onNavigate }) {
               fillOpacity="0.9"
               style={{ fontFamily: 'Archivo, sans-serif', fontWeight: 800, fontSize: '150px', letterSpacing: '-3px' }}
             >
-              APEXSOFTWORKS
+              APEXSOFTWORX
             </text>
           </motion.svg>
         </div>
@@ -664,10 +884,11 @@ function Footer({ onNavigate }) {
             <button onClick={() => onNavigate('#craft')} className="hover:text-[#ede8e0] transition-colors">CRAFT</button>
             <button onClick={() => onNavigate('#systems')} className="hover:text-[#ede8e0] transition-colors">SYSTEMS</button>
             <button onClick={() => onNavigate('#intelligence')} className="hover:text-[#ede8e0] transition-colors">INTELLIGENCE</button>
+            <button onClick={() => onNavigate('#work')} className="hover:text-[#ede8e0] transition-colors">WORK</button>
             <button onClick={() => onNavigate('#studio')} className="hover:text-[#ede8e0] transition-colors">STUDIO</button>
             <button onClick={() => onNavigate('#connect')} className="hover:text-[#ede8e0] transition-colors">CONNECT</button>
           </div>
-          <p>© MMXXV APEXSOFTWORKS — FORGED IN UTAH</p>
+          <p>© MMXXV APEXSOFTWORX — FORGED IN UTAH</p>
         </div>
       </div>
     </footer>
@@ -744,7 +965,7 @@ function Preloader({ onReveal, onComplete }) {
         </motion.div>
 
         <div className="font-mono2 text-[10px] md:text-[11px] tracking-[0.4em] text-[#ede8e0]/55">
-          APEXSOFTWORKS — SOFTWARE STUDIO
+          APEXSOFTWORX — SOFTWARE STUDIO
         </div>
 
         <div
@@ -781,6 +1002,8 @@ export default function App() {
   const progressRef = useRef(0)
   const lenisRef = useRef(null)
   const velRef = useRef(0)
+  const audioRef = useRef(null)
+  const [audioOn, setAudioOn] = useState(false)
   const [loading, setLoading] = useState(true)
   const [started, setStarted] = useState(false)
   const { scrollYProgress } = useScroll()
@@ -790,9 +1013,40 @@ export default function App() {
   useEffect(() => {
     const unsub = scrollYProgress.on('change', (v) => {
       progressRef.current = v
+      const a = audioRef.current
+      if (a) {
+        const summit = Math.exp(-Math.pow((v - 0.68) / 0.15, 2))
+        const bed = Math.min(1, v * 1.25)
+        a.setIntensity(Math.min(1, Math.max(summit, bed * 0.5)))
+      }
     })
     return unsub
   }, [scrollYProgress])
+
+  // generative ambient audio — instantiated once, muted by default
+  useEffect(() => {
+    audioRef.current = new ForgeAudio()
+    return () => {
+      if (audioRef.current) audioRef.current.dispose()
+      audioRef.current = null
+    }
+  }, [])
+
+  const toggleAudio = async () => {
+    const a = audioRef.current
+    if (!a) return
+    if (!audioOn) {
+      await a.start()
+      const v = progressRef.current
+      const summit = Math.exp(-Math.pow((v - 0.68) / 0.15, 2))
+      const bed = Math.min(1, v * 1.25)
+      a.setIntensity(Math.min(1, Math.max(summit, bed * 0.5)))
+      setAudioOn(true)
+    } else {
+      a.stop()
+      setAudioOn(false)
+    }
+  }
 
   // lock scroll while the loader is up
   useEffect(() => {
@@ -875,7 +1129,7 @@ export default function App() {
         className="fixed top-0 left-0 right-0 z-[62] h-[2px] bg-gradient-to-r from-[#ff6a2c] to-[#ffb36b]"
       />
 
-      <Nav onNavigate={onNavigate} />
+      <Nav onNavigate={onNavigate} audioOn={audioOn} onToggleAudio={toggleAudio} />
       {!reduced && <ScrollHUD progress={scrollYProgress} />}
       <Cursor />
 
@@ -925,10 +1179,11 @@ export default function App() {
           />
         </section>
 
+        <SelectedWork />
+
         <ApexMoment />
         <Metrics />
         <Connect />
-
         <section className="relative w-full overflow-hidden py-10 md:py-16">
           <Marquee
             velocityRef={velRef}

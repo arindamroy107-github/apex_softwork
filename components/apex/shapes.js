@@ -132,12 +132,56 @@ export function galaxy(count) {
   return out
 }
 
+// A layered Utah canyon: terraced mesa strata carved by a meandering river gorge.
+// Baked with a forward tilt so it reads as an aerial fly-through. Nods to the
+// studio's red-rock home (Orem, Utah).
+export function utahCanyon(count) {
+  const out = new Float32Array(count * 3)
+  const W = 22, D = 20
+  const tilt = 0.6
+  const cs = Math.cos(tilt), sn = Math.sin(tilt)
+
+  const strata = (x, z) => {
+    let h = 0
+    h += Math.sin(x * 0.42 + 0.6) * Math.cos(z * 0.36) * 1.5
+    h += Math.sin(x * 0.9 - z * 0.5) * 0.7
+    h += Math.cos(x * 1.7 + z * 0.32) * 0.35
+    h += Math.sin((x + z) * 1.3) * 0.18
+    return h
+  }
+
+  for (let i = 0; i < count; i++) {
+    const x = (rand() - 0.5) * W
+    const z = (rand() - 0.5) * D
+    let h = strata(x, z)
+    // terrace into mesa steps (Utah rock strata)
+    const steps = 6
+    h = Math.round(h * steps) / steps
+    let y = h * 2.4 + 2.2
+    // carve a meandering river gorge down the middle
+    const center = Math.sin(z * 0.42) * 4.2 + Math.sin(z * 0.16) * 2.0
+    const dx = x - center
+    y -= Math.exp(-(dx * dx) / 7.0) * 9.0
+    // sharpen the inner canyon walls
+    y -= Math.exp(-(dx * dx) / 1.3) * 1.6
+    y -= 1.0
+    // bake a forward tilt — aerial fly-through perspective (rotate about X)
+    const yt = y * cs - z * sn
+    const zt = y * sn + z * cs
+    out[i * 3] = x
+    out[i * 3 + 1] = yt
+    out[i * 3 + 2] = zt
+  }
+  return out
+}
+
 export function makeShapes(count) {
   return [
     nebula(count),
     monolith(count),
     sphereShape(count),
     torusKnot(count),
+    utahCanyon(count),
     textShape(count, 'APEX'),
     galaxy(count),
   ]
