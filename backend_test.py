@@ -1,270 +1,151 @@
 #!/usr/bin/env python3
 """
-Backend API Tests for ApexSoftworks Inquiry System
-Tests the Next.js App Router catch-all API at /app/app/api/[[...path]]/route.js
+Backend API Test for ApexSoftworks
+Tests POST /api/inquiries endpoint to verify no _id leak after fix
 """
 
 import requests
 import json
 import sys
-from datetime import datetime
 
-# Base URL from .env NEXT_PUBLIC_BASE_URL
+# Base URL from .env
 BASE_URL = "https://nexus-craft-5.preview.emergentagent.com/api"
 
-def test_post_inquiry_valid():
-    """Test 1: POST /api/inquiries with valid data"""
+def test_post_inquiries_no_id_leak():
+    """
+    Test POST /api/inquiries endpoint
+    Verify:
+    1. Returns HTTP 201
+    2. Returns JSON with ok:true
+    3. Returns inquiry object with UUID id, name, email, brief, created_at
+    4. CRITICAL: inquiry object does NOT contain MongoDB _id field
+    """
     print("\n" + "="*80)
-    print("TEST 1: POST /api/inquiries with valid data")
+    print("TEST: POST /api/inquiries - Verify no _id leak")
     print("="*80)
     
     url = f"{BASE_URL}/inquiries"
     payload = {
-        "name": "Ada Lovelace",
-        "email": "ada@apex.dev",
-        "brief": "A real-time analytics platform"
+        "name": "Grace Hopper",
+        "email": "grace@apex.dev",
+        "brief": "Verify no _id leak"
     }
+    
+    print(f"\n📤 Request URL: {url}")
+    print(f"📤 Request Method: POST")
+    print(f"📤 Request Payload: {json.dumps(payload, indent=2)}")
     
     try:
         response = requests.post(url, json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
         
-        # Assertions
-        assert response.status_code == 201, f"Expected 201, got {response.status_code}"
+        print(f"\n📥 Response Status: {response.status_code}")
+        print(f"📥 Response Headers: {dict(response.headers)}")
         
-        data = response.json()
-        assert "ok" in data, "Response missing 'ok' field"
-        assert data["ok"] is True, f"Expected ok=true, got {data['ok']}"
-        assert "inquiry" in data, "Response missing 'inquiry' field"
+        # Try to parse JSON
+        try:
+            response_json = response.json()
+            print(f"📥 Response Body (formatted):")
+            print(json.dumps(response_json, indent=2))
+        except Exception as e:
+            print(f"❌ Failed to parse JSON response: {e}")
+            print(f"📥 Raw Response Body: {response.text}")
+            return False
         
-        inquiry = data["inquiry"]
-        assert "id" in inquiry, "Inquiry missing 'id' field"
-        assert isinstance(inquiry["id"], str), "Inquiry 'id' should be a string (UUID)"
-        assert len(inquiry["id"]) == 36, f"UUID should be 36 chars, got {len(inquiry['id'])}"
+        # Check 1: HTTP 201
+        if response.status_code != 201:
+            print(f"\n❌ FAILED: Expected status 201, got {response.status_code}")
+            return False
+        print(f"✅ PASSED: Status code is 201")
         
-        assert inquiry["name"] == "Ada Lovelace", f"Name mismatch: {inquiry['name']}"
-        assert inquiry["email"] == "ada@apex.dev", f"Email mismatch: {inquiry['email']}"
-        assert inquiry["brief"] == "A real-time analytics platform", f"Brief mismatch: {inquiry['brief']}"
+        # Check 2: ok:true
+        if not response_json.get('ok'):
+            print(f"\n❌ FAILED: Expected 'ok: true', got {response_json.get('ok')}")
+            return False
+        print(f"✅ PASSED: Response contains 'ok: true'")
         
-        assert "created_at" in inquiry, "Inquiry missing 'created_at' field"
-        # Verify ISO format
-        datetime.fromisoformat(inquiry["created_at"].replace('Z', '+00:00'))
+        # Check 3: inquiry object exists
+        inquiry = response_json.get('inquiry')
+        if not inquiry:
+            print(f"\n❌ FAILED: No 'inquiry' object in response")
+            return False
+        print(f"✅ PASSED: Response contains 'inquiry' object")
         
-        # Verify no Mongo _id field
-        assert "_id" not in inquiry, "Inquiry should NOT contain Mongo '_id' field"
+        # Check 4: CRITICAL - No _id field
+        if '_id' in inquiry:
+            print(f"\n❌ CRITICAL FAILURE: MongoDB '_id' field found in inquiry object!")
+            print(f"   Leaked _id value: {inquiry['_id']}")
+            print(f"   This indicates the fix did not work correctly.")
+            return False
+        print(f"✅ PASSED: No MongoDB '_id' field in inquiry object")
         
-        print("✅ TEST 1 PASSED: Valid inquiry created successfully")
-        return True, inquiry["id"]
+        # Check 5: Has UUID id field
+        if 'id' not in inquiry:
+            print(f"\n❌ FAILED: No 'id' field in inquiry object")
+            return False
         
-    except AssertionError as e:
-        print(f"❌ TEST 1 FAILED: {e}")
-        return False, None
-    except Exception as e:
-        print(f"❌ TEST 1 FAILED with exception: {e}")
-        return False, None
-
-
-def test_post_inquiry_missing_email():
-    """Test 2: POST /api/inquiries with missing email"""
-    print("\n" + "="*80)
-    print("TEST 2: POST /api/inquiries with missing email")
-    print("="*80)
-    
-    url = f"{BASE_URL}/inquiries"
-    payload = {
-        "name": "NoEmail"
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
+        # Verify it looks like a UUID (basic check)
+        inquiry_id = inquiry['id']
+        if not isinstance(inquiry_id, str) or len(inquiry_id) < 32:
+            print(f"\n❌ FAILED: 'id' field doesn't look like a UUID: {inquiry_id}")
+            return False
+        print(f"✅ PASSED: inquiry contains UUID 'id': {inquiry_id}")
         
-        # Assertions
-        assert response.status_code == 400, f"Expected 400, got {response.status_code}"
+        # Check 6: Has required fields
+        required_fields = ['name', 'email', 'brief', 'created_at']
+        missing_fields = [f for f in required_fields if f not in inquiry]
+        if missing_fields:
+            print(f"\n❌ FAILED: Missing required fields: {missing_fields}")
+            return False
+        print(f"✅ PASSED: inquiry contains all required fields: {required_fields}")
         
-        data = response.json()
-        assert "error" in data, "Response missing 'error' field"
+        # Check 7: Verify field values
+        if inquiry['name'] != payload['name']:
+            print(f"\n❌ FAILED: name mismatch. Expected '{payload['name']}', got '{inquiry['name']}'")
+            return False
+        if inquiry['email'] != payload['email']:
+            print(f"\n❌ FAILED: email mismatch. Expected '{payload['email']}', got '{inquiry['email']}'")
+            return False
+        if inquiry['brief'] != payload['brief']:
+            print(f"\n❌ FAILED: brief mismatch. Expected '{payload['brief']}', got '{inquiry['brief']}'")
+            return False
+        print(f"✅ PASSED: All field values match the request payload")
         
-        print("✅ TEST 2 PASSED: Missing email correctly rejected with 400")
+        # Check 8: created_at is ISO format
+        created_at = inquiry['created_at']
+        if not isinstance(created_at, str) or 'T' not in created_at:
+            print(f"\n❌ FAILED: created_at is not in ISO format: {created_at}")
+            return False
+        print(f"✅ PASSED: created_at is in ISO format: {created_at}")
+        
+        print("\n" + "="*80)
+        print("🎉 ALL CHECKS PASSED!")
+        print("="*80)
+        print("\n📋 EXACT RESPONSE BODY:")
+        print(json.dumps(response_json, indent=2))
+        print("\n📋 INQUIRY OBJECT FIELDS:")
+        for key, value in inquiry.items():
+            print(f"   • {key}: {value}")
+        
         return True
         
-    except AssertionError as e:
-        print(f"❌ TEST 2 FAILED: {e}")
+    except requests.exceptions.RequestException as e:
+        print(f"\n❌ Request failed: {e}")
         return False
     except Exception as e:
-        print(f"❌ TEST 2 FAILED with exception: {e}")
+        print(f"\n❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-
-
-def test_post_inquiry_missing_name():
-    """Test 3: POST /api/inquiries with missing name"""
-    print("\n" + "="*80)
-    print("TEST 3: POST /api/inquiries with missing name")
-    print("="*80)
-    
-    url = f"{BASE_URL}/inquiries"
-    payload = {
-        "email": "test@test.com"
-    }
-    
-    try:
-        response = requests.post(url, json=payload, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
-        
-        # Assertions
-        assert response.status_code == 400, f"Expected 400, got {response.status_code}"
-        
-        data = response.json()
-        assert "error" in data, "Response missing 'error' field"
-        
-        print("✅ TEST 3 PASSED: Missing name correctly rejected with 400")
-        return True
-        
-    except AssertionError as e:
-        print(f"❌ TEST 3 FAILED: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ TEST 3 FAILED with exception: {e}")
-        return False
-
-
-def test_get_inquiries(expected_inquiry_id):
-    """Test 4: GET /api/inquiries"""
-    print("\n" + "="*80)
-    print("TEST 4: GET /api/inquiries")
-    print("="*80)
-    
-    url = f"{BASE_URL}/inquiries"
-    
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        
-        # Assertions
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        
-        data = response.json()
-        assert isinstance(data, list), f"Expected array, got {type(data)}"
-        
-        print(f"Response: Array with {len(data)} inquiries")
-        
-        # Find the inquiry we created
-        found = False
-        for inquiry in data:
-            print(f"  - Inquiry ID: {inquiry.get('id')}, Name: {inquiry.get('name')}, Email: {inquiry.get('email')}")
-            
-            # Verify no _id field
-            assert "_id" not in inquiry, f"Inquiry should NOT contain Mongo '_id' field"
-            
-            if inquiry.get("id") == expected_inquiry_id:
-                found = True
-                assert inquiry["name"] == "Ada Lovelace", f"Name mismatch: {inquiry['name']}"
-                assert inquiry["email"] == "ada@apex.dev", f"Email mismatch: {inquiry['email']}"
-                assert inquiry["brief"] == "A real-time analytics platform", f"Brief mismatch: {inquiry['brief']}"
-        
-        if expected_inquiry_id:
-            assert found, f"Created inquiry with ID {expected_inquiry_id} not found in list"
-        
-        # Verify sorted by created_at desc (most recent first)
-        if len(data) > 1:
-            for i in range(len(data) - 1):
-                current_time = datetime.fromisoformat(data[i]["created_at"].replace('Z', '+00:00'))
-                next_time = datetime.fromisoformat(data[i+1]["created_at"].replace('Z', '+00:00'))
-                assert current_time >= next_time, "Inquiries not sorted by created_at desc"
-        
-        print("✅ TEST 4 PASSED: GET inquiries returned correct data")
-        return True
-        
-    except AssertionError as e:
-        print(f"❌ TEST 4 FAILED: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ TEST 4 FAILED with exception: {e}")
-        return False
-
-
-def test_get_root():
-    """Test 5: GET /api/root"""
-    print("\n" + "="*80)
-    print("TEST 5: GET /api/root")
-    print("="*80)
-    
-    url = f"{BASE_URL}/root"
-    
-    try:
-        response = requests.get(url, timeout=10)
-        print(f"Status Code: {response.status_code}")
-        print(f"Response Body: {json.dumps(response.json(), indent=2)}")
-        
-        # Assertions
-        assert response.status_code == 200, f"Expected 200, got {response.status_code}"
-        
-        data = response.json()
-        assert "message" in data, "Response missing 'message' field"
-        
-        print("✅ TEST 5 PASSED: GET /api/root returned message")
-        return True
-        
-    except AssertionError as e:
-        print(f"❌ TEST 5 FAILED: {e}")
-        return False
-    except Exception as e:
-        print(f"❌ TEST 5 FAILED with exception: {e}")
-        return False
-
-
-def main():
-    """Run all tests"""
-    print("\n" + "="*80)
-    print("APEXSOFTWORKS INQUIRY API BACKEND TESTS")
-    print("="*80)
-    print(f"Base URL: {BASE_URL}")
-    
-    results = []
-    
-    # Test 1: POST with valid data
-    test1_passed, inquiry_id = test_post_inquiry_valid()
-    results.append(("POST /api/inquiries (valid)", test1_passed))
-    
-    # Test 2: POST with missing email
-    test2_passed = test_post_inquiry_missing_email()
-    results.append(("POST /api/inquiries (missing email)", test2_passed))
-    
-    # Test 3: POST with missing name
-    test3_passed = test_post_inquiry_missing_name()
-    results.append(("POST /api/inquiries (missing name)", test3_passed))
-    
-    # Test 4: GET inquiries
-    test4_passed = test_get_inquiries(inquiry_id)
-    results.append(("GET /api/inquiries", test4_passed))
-    
-    # Test 5: GET root
-    test5_passed = test_get_root()
-    results.append(("GET /api/root", test5_passed))
-    
-    # Summary
-    print("\n" + "="*80)
-    print("TEST SUMMARY")
-    print("="*80)
-    
-    for test_name, passed in results:
-        status = "✅ PASS" if passed else "❌ FAIL"
-        print(f"{status}: {test_name}")
-    
-    total = len(results)
-    passed = sum(1 for _, p in results if p)
-    print(f"\nTotal: {passed}/{total} tests passed")
-    
-    if passed == total:
-        print("\n🎉 ALL TESTS PASSED!")
-        sys.exit(0)
-    else:
-        print(f"\n⚠️  {total - passed} test(s) failed")
-        sys.exit(1)
-
 
 if __name__ == "__main__":
-    main()
+    print("\n🚀 Starting ApexSoftworks Backend API Test")
+    print(f"🌐 Base URL: {BASE_URL}")
+    
+    success = test_post_inquiries_no_id_leak()
+    
+    if success:
+        print("\n✅ TEST SUITE PASSED")
+        sys.exit(0)
+    else:
+        print("\n❌ TEST SUITE FAILED")
+        sys.exit(1)

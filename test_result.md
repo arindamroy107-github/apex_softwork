@@ -107,7 +107,7 @@ user_problem_statement: "Build ApexSoftworks — an AWWWARDS-tier, scroll-driven
 backend:
   - task: "Inquiry API (POST /api/inquiries, GET /api/inquiries)"
     implemented: true
-    working: false
+    working: true
     file: "/app/app/api/[[...path]]/route.js"
     stuck_count: 0
     priority: "high"
@@ -118,7 +118,16 @@ backend:
         -comment: "Implemented POST /api/inquiries (requires name + email, stores id/name/email/brief/created_at in 'inquiries' collection using UUID; returns 201 with ok:true). GET /api/inquiries returns list sorted by created_at desc with _id stripped. POST without name/email should return 400. Root GET /api/root returns a message. Please verify all of these."
         -working: false
         -agent: "testing"
+        -comment: "4/5 passed. POST returned leaked Mongo _id in the inquiry object (insertOne mutates its arg)."
+        -working: "NA"
+        -agent: "main"
+        -comment: "Fixed by inserting a spread copy ({...inquiry}) so the original returned object stays clean. Please re-verify POST /api/inquiries does NOT include _id."
+        -working: false
+        -agent: "testing"
         -comment: "CRITICAL ISSUE: POST /api/inquiries returns Mongo '_id' field in the inquiry object (line 68 in route.js). After MongoDB insertOne(), the inquiry object is mutated to include _id. Must destructure to remove _id before returning, similar to how GET endpoint does it (line 78). PASSED: POST validation (400 for missing name/email), GET /api/inquiries (correctly strips _id), GET /api/root (returns message). Test results: 4/5 passed. Only POST response format failing."
+        -working: true
+        -agent: "testing"
+        -comment: "✅ FIX VERIFIED! POST /api/inquiries now working correctly. Tested with payload {name:'Grace Hopper', email:'grace@apex.dev', brief:'Verify no _id leak'}. Response: HTTP 201, {ok:true, inquiry:{id:'3d90f10e-5299-4478-b2da-796ebeacb883', name:'Grace Hopper', email:'grace@apex.dev', brief:'Verify no _id leak', created_at:'2026-06-03T00:50:27.151Z'}}. CRITICAL: Confirmed NO MongoDB '_id' field in response. The fix (line 67: insertOne({...inquiry})) successfully prevents mutation of the returned object. All 8 checks passed: status 201, ok:true, inquiry object present, no _id leak, UUID id present, all required fields present, field values match, ISO timestamp format."
 
 metadata:
   created_by: "main_agent"
@@ -138,3 +147,5 @@ agent_communication:
     -message: "Please test the inquiry backend API only. Base URL is the public env URL with /api prefix. Test: (1) POST /api/inquiries with valid {name,email,brief} -> expect 201 and ok:true with inquiry object containing a uuid id and created_at; (2) POST /api/inquiries missing email or name -> expect 400 with error; (3) GET /api/inquiries -> expect 200 array including the created inquiry, with no Mongo _id field; (4) GET /api/root -> expect 200 with a message. Do NOT test the frontend."
     -agent: "testing"
     -message: "Backend testing complete. CRITICAL BUG FOUND: POST /api/inquiries endpoint returns MongoDB '_id' field in response (line 68). After insertOne(), the inquiry object gets mutated by MongoDB. Need to destructure {_id, ...rest} before returning, like the GET endpoint does. Fix required at line 68: change 'return handleCORS(NextResponse.json({ ok: true, inquiry }, { status: 201 }))' to strip _id. All other functionality working correctly (validation, GET endpoints, sorting)."
+    -agent: "testing"
+    -message: "✅ RE-VERIFICATION COMPLETE: POST /api/inquiries fix confirmed working. The spread operator fix (insertOne({...inquiry})) successfully prevents MongoDB from mutating the returned inquiry object. No '_id' field leak detected. Response contains only clean fields: {ok, inquiry:{id, name, email, brief, created_at}}. Backend API is fully functional and ready for production."

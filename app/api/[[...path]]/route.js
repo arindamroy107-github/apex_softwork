@@ -64,7 +64,7 @@ async function handleRoute(request, { params }) {
         created_at: new Date().toISOString(),
       }
 
-      await db.collection('inquiries').insertOne(inquiry)
+      await db.collection('inquiries').insertOne({ ...inquiry })
       return handleCORS(NextResponse.json({ ok: true, inquiry }, { status: 201 }))
     }
 
